@@ -2,26 +2,32 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-dotenv.config();
+import {Request, Response} from "express";
 
+dotenv.config();
 
 const app = express();
 
-app.use(cors());
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI as string;
 
+app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
-    res.send("heyyyy")
-})
+app.get("/", (req:Request,res:Response) => {
+    res.send("heyyyy");
+});
 
-mongoose.connect(process.env.MONGO_URI).then(() => {
-    console.log("Connected to MongoDB");
-}).catch((err) => {
-    console.log(err.message);
-})
+mongoose
+    .connect(MONGO_URI)
+    .then(() => {
+        console.log("Connected to MongoDB");
+    })
+    .catch((err) => {
+        console.log("MongoDB connection failed");
+        console.log(err.message);
+    });
 
-
-app.listen(process.env.PORT, () => {
-    console.log("App listening on port: " + process.env.PORT);
-}
+app.listen(PORT, () => {
+    console.log("App listening on port: " + PORT);
+});
