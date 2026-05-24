@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import {Request, Response} from "express";
 
 import authRoutes from "./routes/authRoutes";
+import proposalRoutes from "./routes/proposalRoutes";
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ app.get("/", (req:Request,res:Response) => {
 });
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/proposals", proposalRoutes);
 
 mongoose
     .connect(MONGO_URI)
