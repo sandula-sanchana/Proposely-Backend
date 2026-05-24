@@ -29,6 +29,7 @@ export const register = async (req: Request, res: Response) => {
             email,
             password: hashedPassword,
             role: role || "STUDENT",
+            authProvider: "LOCAL",
         });
 
         return res.status(201).json({
@@ -68,6 +69,12 @@ export const login = async (req: Request, res: Response) => {
             });
         }
 
+        if (user.authProvider === "GOOGLE" || !user.password) {
+            return res.status(400).json({
+                message: "This account uses Google login. Please continue with Google.",
+            });
+        }
+
         const isPasswordMatch = await bcrypt.compare(password, user.password);
 
         if (!isPasswordMatch) {
@@ -87,6 +94,7 @@ export const login = async (req: Request, res: Response) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    authProvider: user.authProvider,
                 },
                 accessToken,
                 refreshToken,
