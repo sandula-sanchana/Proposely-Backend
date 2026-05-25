@@ -163,3 +163,62 @@ export const submitProposal = async (req: AuthRequest, res: Response) => {
         });
     }
 };
+
+export const updateProposal = async (req: AuthRequest, res: Response) => {
+    try {
+        const proposalId = req.params.id;
+        const studentId = req.user?.id;
+        const { title, description } = req.body;
+
+        if (!title && !description) {
+            return res.status(400).json({
+                message: "Title or description is required",
+            });
+        }
+
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.student.toString() !== studentId) {
+            return res.status(403).json({
+                message: "You can only update your own proposal",
+            });
+        }
+
+        if (
+            proposal.status !== "DRAFT" &&
+            proposal.status !== "CHANGES_REQUESTED"
+        ) {
+            return res.status(400).json({
+                message: "Only draft or change-requested proposals can be updated",
+            });
+        }
+
+        if (title) {
+            proposal.title = title;
+        }
+
+        if (description) {
+            proposal.description = description;
+        }
+
+        await proposal.save();
+
+        return res.status(200).json({
+            message: "Proposal updated successfully",
+            data: proposal,
+        });
+    } catch (error: any) {
+        console.log("UPDATE PROPOSAL ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to update proposal",
+            error: error.message,
+        });
+    }
+};

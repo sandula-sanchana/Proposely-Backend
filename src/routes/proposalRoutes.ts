@@ -4,7 +4,7 @@ import {
     createProposal,
     getMyProposals,
     getProposalById,
-    submitProposal,
+    submitProposal, updateProposal,
 } from "../controllers/proposalController";
 
 import { authMiddleware } from "../middleware/authMiddleware";
@@ -37,6 +37,13 @@ router.get(
     "/:id",
     authMiddleware,
     getProposalById
+);
+
+router.patch(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("STUDENT"),
+    updateProposal
 );
 
 export default router;
