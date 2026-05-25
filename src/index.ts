@@ -7,6 +7,7 @@ import {Request, Response} from "express";
 import authRoutes from "./routes/authRoutes";
 import proposalRoutes from "./routes/proposalRoutes";
 import adminProposalRoutes from "./routes/adminProposalRoutes";
+import lecturerProposalRoutes from "./routes/lecturerProposalRoutes";
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.get("/", (req:Request,res:Response) => {
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/proposals", proposalRoutes); //st
 app.use("/api/v1/admin/proposals", adminProposalRoutes); //admin
+app.use("/api/v1/lecturer/proposals", lecturerProposalRoutes); //lec
 
 mongoose
     .connect(MONGO_URI)
