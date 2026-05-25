@@ -1,6 +1,8 @@
 import { Response } from "express";
 import Proposal from "../models/proposalModel";
 import { AuthRequest } from "../middleware/authMiddleware";
+import {generateContentHash} from "../utils/hashContent";
+import ProposalVersion from "../models/proposalVersionModel";
 
 export const createProposal = async (req: AuthRequest, res: Response) => {
     try {
@@ -81,6 +83,82 @@ export const getProposalById = async (req: AuthRequest, res: Response) => {
 
         return res.status(500).json({
             message: "Failed to fetch proposal",
+            error: error.message,
+        });
+    }
+};
+
+export const submitProposal = async (req: AuthRequest, res: Response) => {
+    try {
+        const proposalId = req.params.id;
+        const studentId = req.user?.id;
+
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.student.toString() !== studentId) {
+            return res.status(403).json({
+                message: "You can only submit your own proposal",
+            });
+        }
+
+        if (
+            proposal.status !== "DRAFT" &&
+            proposal.status !== "CHANGES_REQUESTED"
+        ) {
+            return res.status(400).json({
+                message: "Only draft or change-requested proposals can be submitted",
+            });
+        }
+
+        const content = `${proposal.title}\n\n${proposal.description}`;
+        const contentHash = generateContentHash(content);
+
+        const latestVersion = await ProposalVersion.findOne({
+            proposal: proposal._id,
+        }).sort({ versionNumber: -1 });
+
+        if (latestVersion && latestVersion.contentHash === contentHash) {
+            return res.status(400).json({
+                message: "No changes detected. You cannot submit the same proposal again.",
+            });
+        }
+
+        const nextVersionNumber = latestVersion
+            ? latestVersion.versionNumber + 1
+            : 1;
+
+        const proposalVersion = await ProposalVersion.create({
+            proposal: proposal._id,
+            versionNumber: nextVersionNumber,
+            content,
+            contentHash,
+            submittedBy: studentId,
+            locked: true,
+        });
+
+        proposal.status = "SUBMITTED";
+        proposal.latestVersion = proposalVersion._id as any;
+
+        await proposal.save();
+
+        return res.status(201).json({
+            message: "Proposal submitted successfully",
+            data: {
+                proposal,
+                version: proposalVersion,
+            },
+        });
+    } catch (error : any) {
+        console.log("SUBMIT PROPOSAL ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to submit proposal",
             error: error.message,
         });
     }

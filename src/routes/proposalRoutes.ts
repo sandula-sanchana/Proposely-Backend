@@ -1,9 +1,12 @@
 import express from "express";
+
 import {
     createProposal,
     getMyProposals,
     getProposalById,
+    submitProposal,
 } from "../controllers/proposalController";
+
 import { authMiddleware } from "../middleware/authMiddleware";
 import { roleMiddleware } from "../middleware/roleMiddleware";
 
@@ -21,6 +24,13 @@ router.get(
     authMiddleware,
     roleMiddleware("STUDENT"),
     getMyProposals
+);
+
+router.post(
+    "/:id/submit",
+    authMiddleware,
+    roleMiddleware("STUDENT"),
+    submitProposal
 );
 
 router.get(
