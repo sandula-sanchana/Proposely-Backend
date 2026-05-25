@@ -1,7 +1,8 @@
 import express from "express";
 
 import {
-    getMyAssignedProposals,
+    addProposalComment,
+    getMyAssignedProposals, getProposalComments,
     reviewProposal,
 } from "../controllers/lecturerProposalController";
 import { authMiddleware } from "../middleware/authMiddleware";
@@ -21,6 +22,20 @@ router.patch(
     authMiddleware,
     roleMiddleware("LECTURER"),
     reviewProposal
+);
+
+router.post(
+    "/:id/comments",
+    authMiddleware,
+    roleMiddleware("LECTURER"),
+    addProposalComment
+);
+
+router.get(
+    "/:id/comments",
+    authMiddleware,
+    roleMiddleware("LECTURER"),
+    getProposalComments
 );
 
 export default router;

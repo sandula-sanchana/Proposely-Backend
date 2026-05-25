@@ -3,6 +3,8 @@ import Proposal from "../models/proposalModel";
 import { AuthRequest } from "../middleware/authMiddleware";
 import {generateContentHash} from "../utils/hashContent";
 import ProposalVersion from "../models/proposalVersionModel";
+import ProposalComment from "../models/proposalCommentModel";
+import ProposalReview from "../models/proposalReviewModel";
 
 export const createProposal = async (req: AuthRequest, res: Response) => {
     try {
@@ -218,6 +220,148 @@ export const updateProposal = async (req: AuthRequest, res: Response) => {
 
         return res.status(500).json({
             message: "Failed to update proposal",
+            error: error.message,
+        });
+    }
+};
+
+export const getProposalFeedback = async (req: AuthRequest, res: Response) => {
+    try {
+        const proposalId = req.params.id;
+        const studentId = req.user?.id;
+
+        const proposal = await Proposal.findById(proposalId)
+            .populate("latestVersion");
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.student.toString() !== studentId) {
+            return res.status(403).json({
+                message: "You can only view feedback for your own proposal",
+            });
+        }
+
+        const latestVersion = proposal.latestVersion as any;
+
+        const allComments = await ProposalComment.find({
+            proposal: proposalId,
+        })
+            .populate("lecturer", "name email role")
+            .populate("proposalVersion", "versionNumber contentHash createdAt")
+            .sort({ createdAt: 1 });
+
+        const allReviews = await ProposalReview.find({
+            proposal: proposalId,
+        })
+            .populate("lecturer", "name email role")
+            .populate("proposalVersion", "versionNumber contentHash createdAt")
+            .sort({ createdAt: -1 });
+
+        const currentVersionComments = latestVersion
+            ? allComments.filter((comment: any) => {
+                return (
+                    comment.proposalVersion?._id?.toString() ===
+                    latestVersion._id.toString()
+                );
+            })
+            : [];
+
+        const previousVersionComments = latestVersion
+            ? allComments.filter((comment: any) => {
+                return (
+                    comment.proposalVersion?._id?.toString() !==
+                    latestVersion._id.toString()
+                );
+            })
+            : allComments;
+
+        const previousReviews = latestVersion
+            ? allReviews.filter((review: any) => {
+                return (
+                    review.proposalVersion?._id?.toString() !==
+                    latestVersion._id.toString()
+                );
+            })
+            : allReviews;
+
+        const currentVersionReviews = latestVersion
+            ? allReviews.filter((review: any) => {
+                return (
+                    review.proposalVersion?._id?.toString() ===
+                    latestVersion._id.toString()
+                );
+            })
+            : [];
+
+        return res.status(200).json({
+            message: "Proposal feedback fetched successfully",
+            data: {
+                proposalStatus: proposal.status,
+                latestVersion,
+                currentVersionComments,
+                previousVersionComments,
+                currentVersionReviews,
+                previousReviews,
+                allComments,
+                allReviews,
+            },
+        });
+    } catch (error: any) {
+        console.log("GET PROPOSAL FEEDBACK ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch proposal feedback",
+            error: error.message,
+        });
+    }
+};
+
+export const resolveProposalComment = async (
+    req: AuthRequest,
+    res: Response
+) => {
+    try {
+        const commentId = req.params.commentId;
+        const studentId = req.user?.id;
+
+        const comment = await ProposalComment.findById(commentId);
+
+        if (!comment) {
+            return res.status(404).json({
+                message: "Comment not found",
+            });
+        }
+
+        const proposal = await Proposal.findById(comment.proposal);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.student.toString() !== studentId) {
+            return res.status(403).json({
+                message: "You can only resolve comments for your own proposal",
+            });
+        }
+
+        comment.resolved = true;
+        await comment.save();
+
+        return res.status(200).json({
+            message: "Comment marked as resolved successfully",
+            data: comment,
+        });
+    } catch (error: any) {
+        console.log("RESOLVE COMMENT ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to resolve comment",
             error: error.message,
         });
     }

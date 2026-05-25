@@ -3,7 +3,7 @@ import express from "express";
 import {
     createProposal,
     getMyProposals,
-    getProposalById,
+    getProposalById, getProposalFeedback, resolveProposalComment,
     submitProposal, updateProposal,
 } from "../controllers/proposalController";
 
@@ -33,6 +33,21 @@ router.post(
     submitProposal
 );
 
+router.patch(
+    "/comments/:commentId/resolve",
+    authMiddleware,
+    roleMiddleware("STUDENT"),
+    resolveProposalComment
+);
+
+router.get(
+    "/:id/feedback",
+    authMiddleware,
+    roleMiddleware("STUDENT"),
+    getProposalFeedback
+);
+
+
 router.get(
     "/:id",
     authMiddleware,
@@ -45,5 +60,9 @@ router.patch(
     roleMiddleware("STUDENT"),
     updateProposal
 );
+
+
+
+
 
 export default router;

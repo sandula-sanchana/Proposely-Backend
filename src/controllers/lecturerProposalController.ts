@@ -2,6 +2,7 @@ import { Response } from "express";
 import Proposal from "../models/proposalModel";
 import { AuthRequest } from "../middleware/authMiddleware";
 import ProposalReview from "../models/proposalReviewModel";
+import ProposalComment from "../models/proposalCommentModel";
 
 export const getMyAssignedProposals = async (
     req: AuthRequest,
@@ -104,6 +105,94 @@ export const reviewProposal = async (req: AuthRequest, res: Response) => {
 
         return res.status(500).json({
             message: "Failed to review proposal",
+            error: error.message,
+        });
+    }
+};
+
+export const addProposalComment = async (req: AuthRequest, res: Response) => {
+    try {
+        const proposalId = req.params.id;
+        const lecturerId = req.user?.id;
+
+        const {
+            commentText,
+            selectedText,
+            startIndex,
+            endIndex,
+        } = req.body;
+
+        if (!commentText) {
+            return res.status(400).json({
+                message: "Comment text is required",
+            });
+        }
+
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.assignedLecturer?.toString() !== lecturerId) {
+            return res.status(403).json({
+                message: "You can only comment on proposals assigned to you",
+            });
+        }
+
+        if (!proposal.latestVersion) {
+            return res.status(400).json({
+                message: "Proposal has no submitted version to comment on",
+            });
+        }
+
+        const comment = await ProposalComment.create({
+            proposal: proposal._id,
+            proposalVersion: proposal.latestVersion,
+            lecturer: lecturerId,
+            commentText,
+            selectedText,
+            startIndex,
+            endIndex,
+            resolved: false,
+        });
+
+        return res.status(201).json({
+            message: "Comment added successfully",
+            data: comment,
+        });
+    } catch (error: any) {
+        console.log("ADD COMMENT ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to add comment",
+            error: error.message,
+        });
+    }
+};
+
+export const getProposalComments = async (req: AuthRequest, res: Response) => {
+    try {
+        const proposalId = req.params.id;
+
+        const comments = await ProposalComment.find({
+            proposal: proposalId,
+        })
+            .populate("lecturer", "name email role")
+            .populate("proposalVersion", "versionNumber contentHash createdAt")
+            .sort({ createdAt: 1 });
+
+        return res.status(200).json({
+            message: "Proposal comments fetched successfully",
+            data: comments,
+        });
+    } catch (error: any) {
+        console.log("GET COMMENTS ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch comments",
             error: error.message,
         });
     }
