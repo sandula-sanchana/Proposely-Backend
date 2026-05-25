@@ -5,6 +5,7 @@ import ProposalReview from "../models/proposalReviewModel";
 import ProposalComment from "../models/proposalCommentModel";
 import ProposalVersion from "../models/proposalVersionModel";
 import {generateAIReview} from "../services/aiReviewService";
+import ProposalAIReview from "../models/proposalAIReviewModel";
 
 export const getMyAssignedProposals = async (
     req: AuthRequest,
@@ -13,7 +14,9 @@ export const getMyAssignedProposals = async (
     try {
         const proposals = await Proposal.find({
             assignedLecturer: req.user?.id,
-            status: "ASSIGNED",
+            status: {
+                $in: ["ASSIGNED", "SUBMITTED", "CHANGES_REQUESTED"],
+            },
         })
             .populate("student", "name email role")
             .populate("assignedLecturer", "name email role")
@@ -21,14 +24,14 @@ export const getMyAssignedProposals = async (
             .sort({ updatedAt: -1 });
 
         return res.status(200).json({
-            message: "Assigned proposals fetched successfully",
+            message: "Lecturer proposals fetched successfully",
             data: proposals,
         });
     } catch (error: any) {
-        console.log("GET ASSIGNED PROPOSALS ERROR:", error.message);
+        console.log("GET LECTURER PROPOSALS ERROR:", error.message);
 
         return res.status(500).json({
-            message: "Failed to fetch assigned proposals",
+            message: "Failed to fetch lecturer proposals",
             error: error.message,
         });
     }
@@ -72,9 +75,9 @@ export const reviewProposal = async (req: AuthRequest, res: Response) => {
             });
         }
 
-        if (proposal.status !== "ASSIGNED") {
+        if (!["ASSIGNED", "SUBMITTED"].includes(proposal.status)) {
             return res.status(400).json({
-                message: "Only assigned proposals can be reviewed",
+                message: "Only assigned or submitted proposals can be reviewed",
             });
         }
 
@@ -250,6 +253,57 @@ export const getProposalVersions = async (
     }
 };
 
+const extractSuggestedDecision = (aiText: string) => {
+    const upperText = aiText.toUpperCase();
+
+    if (upperText.includes("CHANGES_REQUESTED")) {
+        return "CHANGES_REQUESTED";
+    }
+
+    if (upperText.includes("APPROVED")) {
+        return "APPROVED";
+    }
+
+    if (upperText.includes("REJECTED")) {
+        return "REJECTED";
+    }
+
+    return "UNKNOWN";
+};
+
+const extractConfidenceLevel = (aiText: string) => {
+    const upperText = aiText.toUpperCase();
+
+    if (
+        upperText.includes("CONFIDENCE LEVEL:** HIGH") ||
+        upperText.includes("CONFIDENCE LEVEL: HIGH") ||
+        upperText.includes("CONFIDENCE:** HIGH") ||
+        upperText.includes("CONFIDENCE: HIGH")
+    ) {
+        return "HIGH";
+    }
+
+    if (
+        upperText.includes("CONFIDENCE LEVEL:** MEDIUM") ||
+        upperText.includes("CONFIDENCE LEVEL: MEDIUM") ||
+        upperText.includes("CONFIDENCE:** MEDIUM") ||
+        upperText.includes("CONFIDENCE: MEDIUM")
+    ) {
+        return "MEDIUM";
+    }
+
+    if (
+        upperText.includes("CONFIDENCE LEVEL:** LOW") ||
+        upperText.includes("CONFIDENCE LEVEL: LOW") ||
+        upperText.includes("CONFIDENCE:** LOW") ||
+        upperText.includes("CONFIDENCE: LOW")
+    ) {
+        return "LOW";
+    }
+
+    return "UNKNOWN";
+};
+
 export const generateProposalAIReview = async (
     req: AuthRequest,
     res: Response
@@ -386,8 +440,21 @@ Return your answer using this structure:
 
         const aiResult = await generateAIReview(prompt);
 
+        const suggestedDecision = extractSuggestedDecision(aiResult);
+        const confidenceLevel = extractConfidenceLevel(aiResult);
+
+        const savedAIReview = await ProposalAIReview.create({
+            proposal: proposal._id,
+            previousVersion: previousVersion._id,
+            latestVersion: latestVersion._id,
+            lecturer: lecturerId,
+            aiReviewText: aiResult,
+            suggestedDecision,
+            confidenceLevel,
+        });
+
         return res.status(200).json({
-            message: "AI review generated successfully",
+            message: "AI review generated and saved successfully",
             data: {
                 proposal: {
                     _id: proposal._id,
@@ -404,7 +471,7 @@ Return your answer using this structure:
                         versionNumber: latestVersion.versionNumber,
                     },
                 },
-                aiReview: aiResult,
+                aiReview: savedAIReview,
             },
         });
     } catch (error: any) {
@@ -412,6 +479,50 @@ Return your answer using this structure:
 
         return res.status(500).json({
             message: "Failed to generate AI review",
+            error: error.message,
+        });
+    }
+};
+
+export const getProposalAIReviewHistory = async (
+    req: AuthRequest,
+    res: Response
+) => {
+    try {
+        const proposalId = req.params.id;
+        const lecturerId = req.user?.id;
+
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.assignedLecturer?.toString() !== lecturerId) {
+            return res.status(403).json({
+                message: "You can only view AI reviews for proposals assigned to you",
+            });
+        }
+
+        const aiReviews = await ProposalAIReview.find({
+            proposal: proposalId,
+        })
+            .populate("lecturer", "name email role")
+            .populate("previousVersion", "versionNumber contentHash createdAt")
+            .populate("latestVersion", "versionNumber contentHash createdAt")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            message: "AI review history fetched successfully",
+            data: aiReviews,
+        });
+    } catch (error: any) {
+        console.log("GET AI REVIEW HISTORY ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch AI review history",
             error: error.message,
         });
     }

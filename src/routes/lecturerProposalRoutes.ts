@@ -1,10 +1,15 @@
 import express from "express";
 
 import {
-    addProposalComment, generateProposalAIReview,
-    getMyAssignedProposals, getProposalComments, getProposalVersions,
+    addProposalComment,
+    generateProposalAIReview,
+    getMyAssignedProposals,
+    getProposalAIReviewHistory,
+    getProposalComments,
+    getProposalVersions,
     reviewProposal,
 } from "../controllers/lecturerProposalController";
+
 import { authMiddleware } from "../middleware/authMiddleware";
 import { roleMiddleware } from "../middleware/roleMiddleware";
 
@@ -24,18 +29,18 @@ router.get(
     getProposalVersions
 );
 
-router.patch(
-    "/:id/review",
-    authMiddleware,
-    roleMiddleware("LECTURER"),
-    reviewProposal
-);
-
 router.post(
     "/:id/ai-review",
     authMiddleware,
     roleMiddleware("LECTURER"),
     generateProposalAIReview
+);
+
+router.get(
+    "/:id/ai-reviews",
+    authMiddleware,
+    roleMiddleware("LECTURER"),
+    getProposalAIReviewHistory
 );
 
 router.post(
@@ -50,6 +55,13 @@ router.get(
     authMiddleware,
     roleMiddleware("LECTURER"),
     getProposalComments
+);
+
+router.patch(
+    "/:id/review",
+    authMiddleware,
+    roleMiddleware("LECTURER"),
+    reviewProposal
 );
 
 export default router;
