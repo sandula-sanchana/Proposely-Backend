@@ -1,8 +1,8 @@
 import express from "express";
 
 import {
-    addProposalComment,
-    getMyAssignedProposals, getProposalComments,
+    addProposalComment, generateProposalAIReview,
+    getMyAssignedProposals, getProposalComments, getProposalVersions,
     reviewProposal,
 } from "../controllers/lecturerProposalController";
 import { authMiddleware } from "../middleware/authMiddleware";
@@ -17,11 +17,25 @@ router.get(
     getMyAssignedProposals
 );
 
+router.get(
+    "/:id/versions",
+    authMiddleware,
+    roleMiddleware("LECTURER"),
+    getProposalVersions
+);
+
 router.patch(
     "/:id/review",
     authMiddleware,
     roleMiddleware("LECTURER"),
     reviewProposal
+);
+
+router.post(
+    "/:id/ai-review",
+    authMiddleware,
+    roleMiddleware("LECTURER"),
+    generateProposalAIReview
 );
 
 router.post(

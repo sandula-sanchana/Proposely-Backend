@@ -3,6 +3,8 @@ import Proposal from "../models/proposalModel";
 import { AuthRequest } from "../middleware/authMiddleware";
 import ProposalReview from "../models/proposalReviewModel";
 import ProposalComment from "../models/proposalCommentModel";
+import ProposalVersion from "../models/proposalVersionModel";
+import {generateAIReview} from "../services/aiReviewService";
 
 export const getMyAssignedProposals = async (
     req: AuthRequest,
@@ -193,6 +195,223 @@ export const getProposalComments = async (req: AuthRequest, res: Response) => {
 
         return res.status(500).json({
             message: "Failed to fetch comments",
+            error: error.message,
+        });
+    }
+};
+
+export const getProposalVersions = async (
+    req: AuthRequest,
+    res: Response
+) => {
+    try {
+        const proposalId = req.params.id;
+        const lecturerId = req.user?.id;
+
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.assignedLecturer?.toString() !== lecturerId) {
+            return res.status(403).json({
+                message: "You can only view versions of proposals assigned to you",
+            });
+        }
+
+        const versions = await ProposalVersion.find({
+            proposal: proposalId,
+        })
+            .populate("submittedBy", "name email role")
+            .sort({ versionNumber: 1 });
+
+        return res.status(200).json({
+            message: "Proposal versions fetched successfully",
+            data: {
+                proposal: {
+                    _id: proposal._id,
+                    title: proposal.title,
+                    status: proposal.status,
+                    latestVersion: proposal.latestVersion,
+                },
+                versions,
+            },
+        });
+    } catch (error: any) {
+        console.log("GET PROPOSAL VERSIONS ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to fetch proposal versions",
+            error: error.message,
+        });
+    }
+};
+
+export const generateProposalAIReview = async (
+    req: AuthRequest,
+    res: Response
+) => {
+    try {
+        const proposalId = req.params.id;
+        const lecturerId = req.user?.id;
+
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: "Proposal not found",
+            });
+        }
+
+        if (proposal.assignedLecturer?.toString() !== lecturerId) {
+            return res.status(403).json({
+                message: "You can only generate AI review for proposals assigned to you",
+            });
+        }
+
+        const versions = await ProposalVersion.find({
+            proposal: proposalId,
+        }).sort({ versionNumber: 1 });
+
+        if (versions.length < 2) {
+            return res.status(400).json({
+                message: "At least two proposal versions are required for AI comparison",
+            });
+        }
+
+        const previousVersion = versions[versions.length - 2];
+        const latestVersion = versions[versions.length - 1];
+
+        const reviews = await ProposalReview.find({
+            proposal: proposalId,
+            proposalVersion: previousVersion._id,
+        }).sort({ createdAt: -1 });
+
+        const comments = await ProposalComment.find({
+            proposal: proposalId,
+            proposalVersion: previousVersion._id,
+        }).sort({ createdAt: 1 });
+
+        const latestVersionComments = await ProposalComment.find({
+            proposal: proposalId,
+            proposalVersion: latestVersion._id,
+        }).sort({ createdAt: 1 });
+
+        const prompt = `
+You are an AI Review Assistant for an academic project proposal review system.
+
+Your task is to compare the student's previous proposal version and latest proposal version, then evaluate whether the lecturer's feedback and comments were addressed.
+
+Important rules:
+- Do not make the final academic decision.
+- Only assist the lecturer.
+- Be fair, concise, and practical.
+- If evidence is not enough, say so.
+- Return the answer in clear sections.
+
+Proposal title:
+${proposal.title}
+
+Previous version number:
+${previousVersion.versionNumber}
+
+Previous version content:
+${previousVersion.content}
+
+Latest version number:
+${latestVersion.versionNumber}
+
+Latest version content:
+${latestVersion.content}
+
+Lecturer review feedback on previous version:
+${reviews.length > 0
+            ? reviews.map((review: any, index: number) => `
+Review ${index + 1}
+Decision: ${review.decision}
+Feedback: ${review.feedback}
+`).join("\n")
+            : "No formal review feedback found for previous version."
+        }
+
+Lecturer inline comments on previous version:
+${comments.length > 0
+            ? comments.map((comment: any, index: number) => `
+Comment ${index + 1}
+Selected text: ${comment.selectedText || "N/A"}
+Comment: ${comment.commentText}
+Resolved by student: ${comment.resolved ? "Yes" : "No"}
+`).join("\n")
+            : "No inline comments found for previous version."
+        }
+
+Inline comments already added on latest version:
+${latestVersionComments.length > 0
+            ? latestVersionComments.map((comment: any, index: number) => `
+Latest Version Comment ${index + 1}
+Selected text: ${comment.selectedText || "N/A"}
+Comment: ${comment.commentText}
+Resolved: ${comment.resolved ? "Yes" : "No"}
+`).join("\n")
+            : "No inline comments found for latest version."
+        }
+
+Return your answer using this structure:
+
+1. Summary of Changes
+- Explain what changed from previous version to latest version.
+
+2. Feedback Coverage
+- For each lecturer feedback/comment, say:
+  - Addressed / Partially Addressed / Not Addressed
+  - Reason
+
+3. Remaining Issues
+- List issues that still need lecturer attention.
+
+4. Suggested Lecturer Decision
+- Choose one:
+  - APPROVED
+  - CHANGES_REQUESTED
+  - REJECTED
+- Explain that this is only a recommendation and the lecturer makes the final decision.
+
+5. Confidence Level
+- High / Medium / Low
+- Explain why.
+`;
+
+        const aiResult = await generateAIReview(prompt);
+
+        return res.status(200).json({
+            message: "AI review generated successfully",
+            data: {
+                proposal: {
+                    _id: proposal._id,
+                    title: proposal.title,
+                    status: proposal.status,
+                },
+                comparedVersions: {
+                    previousVersion: {
+                        _id: previousVersion._id,
+                        versionNumber: previousVersion.versionNumber,
+                    },
+                    latestVersion: {
+                        _id: latestVersion._id,
+                        versionNumber: latestVersion.versionNumber,
+                    },
+                },
+                aiReview: aiResult,
+            },
+        });
+    } catch (error: any) {
+        console.log("AI REVIEW ERROR:", error.message);
+
+        return res.status(500).json({
+            message: "Failed to generate AI review",
             error: error.message,
         });
     }
