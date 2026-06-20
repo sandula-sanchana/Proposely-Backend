@@ -8,6 +8,7 @@ import authRoutes from "./routes/authRoutes";
 import proposalRoutes from "./routes/proposalRoutes";
 import adminProposalRoutes from "./routes/adminProposalRoutes";
 import lecturerProposalRoutes from "./routes/lecturerProposalRoutes";
+import lecturerRouters from "./routes/lecturerRouter";
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/proposals", proposalRoutes); //st
 app.use("/api/v1/admin/proposals", adminProposalRoutes); //admin
 app.use("/api/v1/lecturer/proposals", lecturerProposalRoutes); //lec
+app.use("/api/v1/admin", lecturerRouters); //lec
 
 mongoose
     .connect(MONGO_URI)
